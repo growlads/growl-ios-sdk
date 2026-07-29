@@ -48,170 +48,72 @@ struct EloAdsExampleApp: App {
     }
 }
 
-/// Which ad format a chat demonstrates once you open it.
-private enum AdFormat: Hashable {
-    /// A banner strip rendered inline in the message feed (`.inlineBanner`).
-    case inlineBanner
-    /// A banner pinned above the keyboard while the composer is focused
-    /// (`.eloKeyboardBannerAd(messages:)`).
-    case keyboardBanner
-
-    var title: String {
-        switch self {
-        case .inlineBanner:   "Inline banner"
-        case .keyboardBanner: "Keyboard banner"
-        }
-    }
-
-    var blurb: String {
-        switch self {
-        case .inlineBanner:   "Renders in the message feed"
-        case .keyboardBanner: "Pins above the keyboard — tap the composer"
-        }
-    }
-}
-
-/// A demo conversation plus the ad format it shows.
-private struct Chat: Identifiable, Hashable {
-    let id = UUID()
-    let title: String
-    let messages: [ChatMessage]
-    let format: AdFormat
-
-    var preview: String { messages.last?.content ?? "" }
-}
-
-/// Root: a list of chats. Opening one shows its conversation and the ad
-/// format it demonstrates.
 struct ContentView: View {
-    private let chats: [Chat] = [
-        Chat(
-            title: "Marathon training",
-            messages: [
-                ChatMessage(role: .user, content: "What's the best running shoe for marathon training?"),
-                ChatMessage(role: .assistant, content: "For marathon training, you'll want shoes with good cushioning and durability. Brands like Hoka, Nike, and Brooks are popular picks."),
-            ],
-            format: .inlineBanner
-        ),
-        Chat(
-            title: "Home espresso",
-            messages: [
-                ChatMessage(role: .user, content: "How do I make espresso at home without a fancy machine?"),
-                ChatMessage(role: .assistant, content: "A stovetop Moka pot gets you close for very little money. Use fine ground coffee, medium heat, and pull it off the stove as soon as it starts sputtering."),
-            ],
-            format: .keyboardBanner
-        ),
+    @State private var adResult: AdResult?
+    @State private var isLoading = false
+
+    private let messages: [ChatMessage] = [
+        ChatMessage(role: .user, content: "What's the best running shoe for marathon training?"),
+        ChatMessage(role: .assistant, content: "For marathon training, you'll want shoes with good cushioning and durability. Brands like Hoka, Nike, and Brooks are popular picks."),
     ]
 
     var body: some View {
-        NavigationStack {
-            List(chats) { chat in
-                NavigationLink(value: chat) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(chat.title).font(.headline)
-                        Text(chat.preview)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Text(chat.format.title)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.vertical, 2)
+        VStack(spacing: 24) {
+            Text("Elo Ads Demo")
+                .font(.largeTitle.bold())
+
+            Text("Tap below to request a contextual ad. The auction runs Elo-direct and AdMob in parallel; the higher-eCPM creative renders.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            Button(action: loadAd) {
+                if isLoading {
+                    ProgressView()
+                } else {
+                    Text("Load ad")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .navigationTitle("Chats")
-            .navigationDestination(for: Chat.self) { chat in
-                ChatDetailView(chat: chat)
-            }
-        }
-    }
-}
+            .buttonStyle(.borderedProminent)
+            .disabled(isLoading)
 
-/// A single conversation. Depending on the chat's format it renders either an
-/// inline banner in the feed or a banner pinned above the keyboard.
-private struct ChatDetailView: View {
-    let chat: Chat
+            // EloAdView renders the loaded ad, handles impression and click
+            // lifecycle events, and hides itself on `.noFill` / `.error`.
+            // Elo-direct clicks still open the destination while client-side
+            // click POST delivery is temporarily disabled.
+            EloAdView(result: adResult)
+                .padding(.horizontal)
 
-    @State private var draft = ""
+            if let adResult { outcomeRow(for: adResult) }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(chat.format.blurb)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    ForEach(chat.messages, id: \.self) { message in
-                        ChatBubble(message: message)
-                    }
-
-                    // Inline banner renders in the feed. The keyboard-banner
-                    // chat shows its ad via the modifier below instead.
-                    if chat.format == .inlineBanner {
-                        EloAdView(messages: chat.messages, layout: .inlineBanner)
-                    }
-                }
-                .padding()
-            }
-
-            composer
-        }
-        .navigationTitle(chat.title)
-        .navigationBarTitleDisplayMode(.inline)
-        // `.eloKeyboardBannerAd` pins the inline banner above the keyboard with
-        // a single modifier — no keyboard tracking in the host app. It only
-        // appears while the composer is focused, so it's applied to the whole
-        // screen for the keyboard-banner chat.
-        .keyboardBanner(for: chat)
-    }
-
-    private var composer: some View {
-        HStack(spacing: 8) {
-            TextField("Message", text: $draft, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-            Button {
-                draft = ""
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-            }
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Spacer()
         }
         .padding()
-        .background(.bar)
     }
-}
 
-private extension View {
-    /// Applies the keyboard-banner modifier only for keyboard-banner chats,
-    /// leaving inline-banner chats untouched.
+    private func loadAd() {
+        isLoading = true
+        Task {
+            adResult = await Elo.loadAd(messages: messages)
+            isLoading = false
+        }
+    }
+
     @ViewBuilder
-    func keyboardBanner(for chat: Chat) -> some View {
-        if chat.format == .keyboardBanner {
-            self.eloKeyboardBannerAd(messages: chat.messages)
-        } else {
-            self
+    private func outcomeRow(for result: AdResult) -> some View {
+        // `AdResult` ships in a binary framework, so it can grow cases in
+        // future SDK releases — hence `@unknown default`.
+        let (label, color): (String, Color) = switch result {
+        case .loaded:           ("Loaded",  .green)
+        case .noFill(let r):    ("No fill: \(r)", .orange)
+        case .error(let m):     ("Error: \(m)",   .red)
+        @unknown default:       ("Unknown result", .secondary)
         }
-    }
-}
-
-/// A minimal chat bubble so the ad has believable surrounding context.
-private struct ChatBubble: View {
-    let message: ChatMessage
-
-    private var isUser: Bool { message.role == .user }
-
-    var body: some View {
-        HStack {
-            if isUser { Spacer(minLength: 40) }
-            Text(message.content)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(isUser ? Color.accentColor.opacity(0.15) : Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            if !isUser { Spacer(minLength: 40) }
-        }
+        Text(label)
+            .font(.footnote.monospaced())
+            .foregroundStyle(color)
     }
 }

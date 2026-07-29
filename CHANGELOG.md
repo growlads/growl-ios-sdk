@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+## 0.1.9 — 2026-07-29
+
+- **An ad image that fails to load now hides the thumbnail instead of leaving
+  a blank tile.** The compact card and the keyboard banner used to keep a gray
+  placeholder square in the row when the creative's image URL couldn't be
+  fetched; the tile and the gap after it now drop out and the text takes the
+  space. AdMob-rendered fills apply the same rule to their icon asset — a fill
+  with no usable icon no longer shows an empty 56pt square. Creatives that
+  carry no image URL at all are unchanged.
+
+- **The ad disclosure now leads the attribution line: `Ad • Headline`.** It
+  used to trail the headline (`Headline · Sponsored`), where a long headline
+  pushed it into the ellipsis and it disappeared. Leading it makes truncation
+  structurally unable to reach it. The separator is now a `•` (U+2022) rather
+  than a `·` (U+00B7), and `sponsoredLabel`'s default changed from
+  `"Sponsored"` to `"Ad"` — shorter, so it costs the headline less width. The
+  parameter name is unchanged, so no call site breaks; keep passing a localized
+  string for non-English surfaces. Applies to the compact card, the keyboard
+  banner, and AdMob-rendered fills.
+
+- **Creative descriptions are now a single line and scroll when they don't
+  fit.** Copy wider than the surface moves right-to-left at 30pt/s until the
+  end of the line is visible, holds there for 1.2s, then restarts from the
+  beginning after another 1.2s pause — so the whole line is readable and two
+  fragments of it are never on screen together. Motion stops while the ad is off
+  screen and falls back to a static ellipsis under Reduce Motion. Opt out with
+  the new `EloAdStyle.descriptionOverflow: .truncate`.
+
+  Note for layouts that reserve space: the compact card's description used to
+  wrap to two lines, so cards with long descriptions are now roughly 19pt
+  shorter. If you reserved a fixed slot height for the card, expect extra
+  whitespace.
+
+- AdMob-rendered fills get the disclosure reorder only — their body text is a
+  registered Google asset view and keeps two-line tail truncation. Marquee for
+  the renderer path is a follow-up.
+
+
 ## 0.1.8 — 2026-07-22
 
 - **Fix: `Elo.shutdown()` during an in-flight ad request no longer risks a
