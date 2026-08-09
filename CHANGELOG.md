@@ -2,6 +2,86 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-08-09
+
+- **New: `Elo.setUserIdentifier` ties ad requests to your own user account.**
+  Every request carries an anonymous, per-install `visitor_id` the SDK
+  generates. Apps with a sign-in can now supply their own identifier instead,
+  and it replaces that anonymous id on subsequent ad requests and their
+  tracking pings — so delivery, frequency capping, and reporting follow the
+  user across installs and devices rather than the install. Call it once the
+  user is known and clear it on sign-out; the order relative to `Elo.configure`
+  does not matter. The anonymous id is kept underneath, so clearing restores
+  the same one the install had before. An ad keeps whichever identity it was
+  requested under for its whole lifetime, so an impression that fires after a
+  sign-out is still reported against the request that fetched it. The
+  identifier lives in memory only (re-set it on each launch) and is cleared by
+  `shutdown()`; a re-configure does not clear it, since a config refresh is not
+  a sign-out. Whitespace is trimmed, a blank string clears it, and values over
+  256 characters are ignored with a warning.
+
+- **Fix: the loading placeholder's shimmer now sweeps a few times and then
+  rests, and stays still for anyone with Reduce Motion on.** It previously
+  repeated for as long as the placeholder was on screen, which is the same
+  never-goes-idle problem as the scrolling description below — and a request
+  that hangs holds the placeholder there indefinitely. It now shimmers well
+  past the point a normal ad request returns, then rests as a plain skeleton.
+
+- **Fix: a scrolling ad description now scrolls a few times and then settles,
+  instead of scrolling for as long as the ad is on screen.** A permanently
+  animating line keeps the host app's main run loop awake, which never lets the
+  app go idle: automation frameworks that wait for idle before each interaction
+  (XCUITest, and Appium on top of it) time out on every tap, and on some OS
+  versions the repeated re-render also grows memory without bound. The
+  description now makes three passes, then stays tail-truncated like any other
+  line. Scroll speed, the holds at each end, travel distance and row height are
+  unchanged, and a new creative gets its own passes.
+
+- **Fix: a scrolling ad description no longer leaks memory for as long as it
+  animates.** Driving the marquee through SwiftUI's animation system makes
+  SwiftUI allocate a new `CADisplayLink` every frame without releasing any of
+  them on some OS releases (reproduced on the iOS 18.4 and 27.0 simulators) —
+  roughly 50 leaked objects per second, unbounded memory growth, and an app
+  UI-test frameworks like XCUITest treat as permanently busy, so automated
+  taps time out. The scroll offset is now stepped on a fixed 30 Hz clock with
+  no `Animation` involved; at the marquee's 30 pt/s velocity each tick moves
+  exactly one point, so the motion is visually unchanged.
+
+- **Fix: a scrolling ad description now always starts from the beginning of
+  the string, flush with the left edge of the row.** When a new creative
+  arrived, or an ad card scrolled back into view, while the previous
+  description was still mid-scroll, the outgoing pass kept driving the new
+  line's position: it could appear to start from the middle of the sentence,
+  or be pushed well to the right and read as indented into the middle of the
+  card. Restarting a pass now cancels any animation still in flight (matching
+  the Android SDK, which was already correct here) and the scrolling line is
+  rebuilt from scratch per run, so it can only ever begin at the head. Scroll
+  speed, the holds at each end, and the height of the line are unchanged.
+
+- **Fix: a creative that wins more than once now records a render and an
+  impression every time it's shown.** Render and impression dedup was keyed on
+  the creative id, which is stable across ad requests — so the second and every
+  later time the same creative won an auction in a single app session, the SDK
+  suppressed both pings while the ad still displayed and still clicked.
+  Those ad opportunities reached the server as a click with no render and no
+  impression behind it. Dedup is now keyed on the ad opportunity, so repeated
+  showings of one creative each report their own render and impression, while
+  the guarantee that matters is unchanged: scrolling an ad out of a lazy list
+  and back, a tab switch, or any other re-appearance still reports exactly one
+  render and one impression per opportunity.
+
+  **Expect reported renders and impressions to rise** once this ships — the
+  missing events were never counted. Click volume is unaffected. Publishers
+  whose reporting showed clicks exceeding impressions for a placement should
+  see that resolve.
+
+  Two consequences worth knowing: `EloAd` equality (and its hash) now
+  distinguishes the same creative served for two different ad requests, where
+  it previously treated them as one value; and `Elo.shutdown()` now clears the
+  dedup state, so an ad shown before shutdown can report again after a
+  re-`configure`.
+
+
 ## 0.1.9 — 2026-07-29
 
 - **An ad image that fails to load now hides the thumbnail instead of leaving

@@ -306,7 +306,7 @@
 			repositoryURL = "https://github.com/growlads/elo-ios-sdk";
 			requirement = {
 				kind = exactVersion;
-				version = 0.1.9;
+				version = 0.2.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
