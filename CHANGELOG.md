@@ -2,6 +2,84 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-08-14
+
+- **Fix: calling `Elo.trackRender` or `Elo.trackImpression` yourself no longer
+  double-counts.** Ads shown through `EloAdView` have always recorded exactly
+  one render and one impression per ad opportunity, however often the view is
+  recycled or re-scrolled — but that limit lived in the view layer, so a fully
+  custom layout calling the tracking hooks directly could report the same
+  opportunity more than once. It now sits behind the public API and covers
+  every path into it, so those hooks are safe to call on every layout pass. A
+  repeat load that returns the same creative is a distinct opportunity and
+  still records. A suppressed duplicate is silent: no ping, and no
+  `eloAdDidTrackImpression` callback.
+- **Fix: an ad hidden behind a container no longer counts as viewable.**
+  Impressions require the ad to be at least half on screen for one continuous
+  second, but "on screen" was measured against the whole window — and the frame
+  it measured ignored clipping. An ad scrolled out of a transcript, inset by a
+  container, or covered when the transcript shrinks for the keyboard therefore
+  measured as fully visible and could fire an impression with none of it in
+  front of the user. Viewability is now measured against what actually clips
+  the ad, so those impressions no longer fire. Expect a small drop in reported
+  impressions: the ones that stop were never viewable under the MRC rule. This
+  is how the Android SDK has always measured.
+- **Fix: the second and later ads shown in the same slot now report an
+  impression.** Impression tracking measures how much of the ad is on screen,
+  and that measurement was reset to "nothing visible" whenever a new ad
+  replaced the one already displayed. Nothing recomputed it: the view had not
+  moved, so no new geometry arrived to correct the reset. Every ad after the
+  first in a slot that stayed mounted — the usual case when a chat requests a
+  fresh ad without the view going away — recorded its render and its click but
+  never its impression. Most reliably so when the new ad repeated an earlier
+  creative, since identical text lays out identically. The dwell is now keyed
+  on the ad opportunity, so a swap restarts the measurement on its own instead
+  of waiting for a change in position that never comes.
+- **New: `DiagnosticsSnapshot.trackingTotals` counts every render, impression,
+  and click attempt since configure.** The existing `trackingEntries` list is a
+  bounded ring buffer, so it could not tell you how many impression pings
+  failed once a session got past the newest twenty — and a ping the SDK gives
+  up on is a lost impression it will never retry. Each `TrackingTotals` carries
+  `attempted`, `delivered`, `failed`, `unobservable`, and `inFlight`, is never
+  evicted, and still records an outcome whose entry had already aged out. The
+  counts also appear in `asExportableText()`. Cleared on configure and
+  `shutdown()`, like the rest of diagnostics.
+- **Fix: re-configuring the SDK now clears tracking state, matching Android.**
+  `Elo.configure` already replaced the session, the ad cache, and the network
+  client, but left the render/impression bookkeeping behind — where it could
+  suppress tracking for an ad shown under the new configuration. It is now
+  cleared alongside the rest, as `Elo.shutdown()` already did.
+- **Fix: an ad card no longer loses its image when the same creative comes
+  back after you leave and re-enter a chat.** The card drops its thumbnail
+  when a creative's image can't be loaded, so a broken URL leaves text rather
+  than a blank square. That suppression fired on cancelled image fetches too —
+  and iOS cancels the fetch in flight whenever the view goes away, which is
+  what navigating out of a chat does. Worse, it was remembered against the
+  creative rather than the ad, so once a creative was marked broken every
+  later ad that served the same creative rendered without its image as well.
+  A cancelled fetch is now left alone and retried on the next showing, and the
+  suppression only applies to the ad it was recorded for.
+
+- **Breaking: `EloAd.id` is now the ad opportunity, and the creative moved to a
+  new `EloAd.creativeId`.** `id` previously carried the ad server's `ad_id` —
+  the *creative* — which is stable across opportunities, so the same creative
+  served twice produced two ads that looked identical to the SDK. The ad
+  opportunity, which is what render, impression, and click URLs are keyed under
+  server-side, was tucked away in an internal field. They have swapped places:
+  `id` is the opportunity (one per showing) and `creativeId` names the artwork.
+  Correlate delivery on `id`; group by `creativeId`.
+
+  If you log or store `ad.id`, it now changes on every serve of the same
+  creative. Switch to `ad.creativeId` wherever you meant the creative.
+
+  **Adapter authors:** `EloAd.init` now takes both `id` and `creativeId`, and
+  `id` must be unique per *fill*. Pass your network's per-response id if it has
+  one, or mint a `UUID().uuidString`. Passing a creative id there collapses
+  every serve of that creative into a single tracked ad, so only the first
+  reports a render and an impression. The bundled AdMob adapter now mints one
+  per fill, which fixes exactly that under-reporting on AdMob native fills.
+
+
 ## 0.2.0 — 2026-08-09
 
 - **New: `Elo.setUserIdentifier` ties ad requests to your own user account.**
