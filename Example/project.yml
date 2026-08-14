@@ -14,7 +14,7 @@ options:
 packages:
   EloAds:
     url: https://github.com/growlads/elo-ios-sdk
-    exactVersion: "0.2.0"
+    exactVersion: "0.3.0"
 
 targets:
   EloAdsExample:
