@@ -2,6 +2,194 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-08-19
+
+- **New: `Elo.setUserIdentity(userIdentifier:userData:)` writes both halves of
+  the identity at once.** The identifier and the user data are persisted as one
+  Keychain record, so setting them with the two existing setters in sequence
+  left an intermediate state on disk: an account switch stored `(B, A's contact
+  details)` until the second call landed, and an ad request or a process kill in
+  that window sent or retained one account's PII under the other's identifier.
+  Prefer the new call from your auth-state hook whenever both are changing.
+  `setUserIdentifier(_:)` and `setUserData(_:)` are unchanged and still correct
+  when only one is.
+
+- **Change: the ad disclosure moved off the headline into a corner badge.** It
+  used to lead the attribution line as `Ad • Headline`, which cost the copy
+  roughly five characters of the narrowest column in the SDK — on the keyboard
+  strip especially, that is space the headline needs. It is now a small capsule
+  overlaid in the surface's top-trailing corner: the headline gets the full
+  width of its column, and the disclosure still cannot be truncated, because it
+  is outside the text flow entirely rather than merely at the head of it.
+  Applies to the compact card and the inline banner alike, and card height is
+  unchanged.
+
+  One consequence worth knowing: `EloAdDisclosure.color` now *fills* the badge
+  capsule rather than coloring inline text, and the copy is drawn over it in
+  the card background color.
+
+  If a UI test asserted the combined `"Ad • Headline"` label, split it — the
+  disclosure and the headline are separate elements now.
+
+- **Breaking: `sponsoredLabel` now takes an `EloAdDisclosure`, not a `String`.**
+  The new value carries the disclosure copy plus an optional `font`, `color`
+  and `accessibilityIdentifier`, so you can restyle the disclosure and give UI
+  tests a stable handle on it. String *literals* are unaffected —
+  `sponsoredLabel: "Anzeige"` still compiles — but a `String` **variable** now
+  needs the explicit wrap, and that includes anything returned by
+  `NSLocalizedString`:
+  `sponsoredLabel: EloAdDisclosure(NSLocalizedString("ad.sponsored", comment: ""))`.
+  Applies to every `EloAdView` initializer and to `eloKeyboardBannerAd`.
+
+  It is a value rather than a `View` on purpose. `EloAdView` draws the badge
+  itself, overlaid on the surface, which is what makes the disclosure
+  untruncatable: nothing in the layout can squeeze or clip it. A
+  publisher-supplied view would have to be laid out beside the headline, where
+  a long headline can do both. `accessibilityIdentifier` names the badge, which
+  is its own element.
+
+  `EloAdRenderConfiguration.sponsoredLabel` is unchanged and still a `String`:
+  adapters build their own native views, so there is nothing there for a font
+  or an identifier to bind to. No adapter needs a change, and mediated fills
+  keep the look they have today — they take your disclosure *copy* and render
+  it in the adapter's own treatment, colored from `EloAdStyle.badgeColor` like
+  the rest of that card.
+
+- **Fix: the ad slot no longer changes height when the request lands.** The
+  strip's row was sized by whatever filled its trailing slot — a call-to-action
+  button carries a 44pt tap target, a chevron is a fraction of that — so a CTA
+  fill grew the slot 10pt on arrival and the loading placeholder matched only
+  the chevron case. Both layouts and the placeholder now reserve the same row
+  height (44pt on the strip, 56pt on the card), which also fixes the card's
+  mirror image: a creative with no artwork collapses its tile and used to
+  *shrink* the card below the placeholder.
+
+- **Fix: creative artwork is fitted rather than centre-cropped.** A brand mark
+  is rarely square, and filling the tile cropped a wide wordmark down to
+  whatever sat in the middle of it — on the strip's circular mark, often a
+  featureless block of the brand's colour. The whole mark is now shown, drawn
+  with high-quality interpolation, and the strip's mark grew from 30pt to 34pt
+  (no height change: the row was already taller than it).
+
+- **Fix: the loading placeholder's corners are rounded again.** Its shimmer
+  highlight was composited after the rounded clip and repainted the corners,
+  so the placeholder read as a square while it animated. Its hairline border
+  was half-clipped for the same reason and now matches the filled ad's.
+
+- **Change: an image-only creative no longer gets an invented description.**
+  A creative with an image but no description used to render the SDK's own
+  copy, "Click to learn more →", whenever there was no CTA button. With the
+  call-to-action backend-managed, the SDK writes no call-to-action of its own:
+  such a creative now renders its headline and nothing beneath it. The
+  trailing disclosure chevron still signals the row is tappable, unchanged.
+  Android never had this fallback, so both platforms now agree.
+
+- **Breaking: `callToActionLabel` is gone from `EloAdView` and
+  `eloKeyboardBannerAd`.** Call-to-action copy is backend-managed now: it
+  arrives on the creative as `EloAd.ctaText` and labels the pill both layouts
+  draw. The publisher-supplied parameter only ever reached renderer-backed
+  fills and no bundled adapter read it, so nothing that shipped ever rendered
+  it. Drop the argument from your call sites.
+  `EloAdRenderConfiguration.callToActionLabel` goes with it, so a third-party
+  renderer that read it must drop it too.
+
+- **Breaking: `openLinkAccessibilityLabel` and the VoiceOver hint it carried
+  are both gone.** The parameter is removed from `EloAdView` and
+  `eloKeyboardBannerAd`, and the tappable surface no longer sets an
+  `accessibilityHint` at all — `EloAdRenderConfiguration` drops the field with
+  it, and the bundled AdMob renderer stops setting the hint too.
+
+  This is a deliberate accessibility reduction, so it is worth stating plainly:
+  VoiceOver used to announce "Open sponsored link" after the element's label
+  and role, telling the listener that activating it leaves the app for an
+  advertiser's destination. It no longer does. Sighted users still get that
+  from the "Ad" disclosure, the button styling and the chevron; a VoiceOver
+  user now gets the disclosure but no statement of where activation leads.
+  Nothing else about the ad's accessibility changes — the disclosure, the
+  element labels and the button role are all untouched.
+
+- **New: creatives can carry their own call-to-action button.** Some demand
+  sources send a label such as "Learn more" with the creative. Where one
+  arrives, both layouts draw it as a pill in the trailing slot in place of the
+  disclosure chevron. `EloAd.ctaText` exposes the label, and
+  `EloAdStyle.callToActionBackground` / `callToActionForeground` color the
+  pill.
+
+- **Change: the two layouts take deliberately different tap rules.** The
+  in-chat card is one tap target from edge to edge, whether or not the
+  creative sends a label — in a transcript the card reads as a single object,
+  and there is no neighbouring control for a stray tap to hit, so its pill is
+  decoration rather than a second button. The keyboard banner does the
+  opposite: when the creative sends a label, only that button taps, because
+  the strip sits directly under the reader's thumb beside the composer and an
+  edge-to-edge target there invites accidental clicks. A strip without a label
+  keeps its whole row tappable behind the chevron. Either way the tap opens
+  the same destination, and render and impression tracking stay on the
+  container, so viewability is unaffected.
+
+- **Change: the keyboard banner shows its loading skeleton by default.**
+  `showLoadingPlaceholder` on `eloKeyboardBannerAd` now defaults to `true`,
+  matching `EloAdView`. The skeleton stands in at the strip's own
+  size, so the composer above keeps its place when an ad arrives, and the slot
+  reads as loading rather than as empty. Pass `false` to keep the keyboard
+  edge completely clear until an ad fills.
+
+- **Fix: a slow creative image no longer holds the whole ad in its skeleton.**
+  The thumbnail now carries its own shimmer and swaps in when the image
+  finishes, so the headline and description render as soon as the ad does.
+
+- **Change: the keyboard banner's strip was retuned to fit real creatives.**
+  A circular brand mark, tighter gutters, and a smaller type scale on the
+  attribution line — at the previous size an ordinary advertiser name
+  ellipsized before the strip had drawn anything else.
+
+- **New: `Elo.setUserData` shares first-party user data on ad requests.** Apps
+  that know their signed-in user can pass age, gender, email, and phone number.
+  The fields are recorded server-side for upcoming targeting features and have
+  no effect on ad selection yet. Pass contact details as they are: they travel
+  over HTTPS and are SHA-256 hashed at the ad server before anything is stored,
+  so Elo never persists a plain email address or phone number, and you don't
+  have to hash them yourself. Give a phone number its country code (E.164),
+  since without one it is ambiguous and the server discards it. The SDK does
+  not validate what you set — values are forwarded as supplied and the server
+  normalizes each one and drops whatever it can't use, so there is one set of
+  rules rather than two that can disagree. Like `setUserIdentifier`, the data
+  is persisted on the device and encrypted at rest, so you set it once rather
+  than on every launch; `shutdown()` erases the stored copy while a
+  re-configure does not. Because it outlives a sign-out, clearing it on
+  sign-out is an obligation — set both this and the identifier from one
+  auth-state hook, which is also the place that keeps a stored copy from going
+  stale when the user changes their email or phone. Each call
+  replaces the whole object. The data never joins tracking pings, and the ad
+  server discards it entirely on requests flagged COPPA or TFUA, and on any
+  request where GDPR applies. Sharing contact details means your app transmits an email
+  address and phone number to Elo — account for that in your privacy policy and
+  App Store nutrition label; see `PRIVACY.md`.
+
+
+- **Change: publisher-supplied identity now survives an app restart.** The
+  identifier from `Elo.setUserIdentifier` and the data from `Elo.setUserData`
+  used to live in memory only, so an app that keeps people signed in between
+  launches reported as anonymous on every relaunch until the user happened to
+  sign in again. Both are now stored on the device as one encrypted record —
+  the Keychain, as a `ThisDeviceOnly` item so it never reaches
+  iCloud Keychain or an encrypted device backup — and are read back at
+  launch, so you set identity once rather than on every start. The trade is
+  that identity now outlives a sign-out you don't signal: call
+  `Elo.setUserIdentifier(nil)` and `Elo.setUserData(nil)` when the user signs
+  out, or the next person on that device inherits both. Upgrading needs no
+  migration — there was never a stored record to read, so the first launch on
+  this version starts anonymous exactly as before, and an integration that
+  already sets identity each launch keeps working unchanged. What does change
+  for it: app termination used to clear identity on its behalf, so an
+  integration that never signalled sign-out was covered by the process boundary
+  and no longer is. `shutdown()` erases the
+  stored record. Nothing is ever written in plaintext — if the platform store
+  is unavailable the SDK keeps identity in memory for that process instead of
+  falling back to an unprotected file. Storing contact details on the device is
+  worth a line in your privacy policy and App Store nutrition label; see `PRIVACY.md`.
+
+
 ## 0.3.0 — 2026-08-14
 
 - **Fix: calling `Elo.trackRender` or `Elo.trackImpression` yourself no longer
