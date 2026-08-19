@@ -23,6 +23,9 @@ host app — are responsible for. Read it before shipping.
 - [ ] If GDPR/US state privacy laws apply to your users, run a CMP that
       writes IAB TCF v2 / GPP keys to `UserDefaults`. The SDK forwards those
       signals; it does not collect consent for you.
+- [ ] Only if you call `Elo.setUserData`: disclose that you share age,
+      gender, email, and phone with Elo, and declare Email Address and Phone
+      Number on your nutrition label. Nothing is sent unless you call it.
 
 ## What the SDK sends, and when
 
@@ -71,6 +74,46 @@ not GPS), and UTC offset.
 - **Visitor ID** — a random per-install `anon_<UUID>` stored in the SDK's
   own `UserDefaults` suite. Not derived from any device identifier; used for
   frequency capping and targeting continuity. Deleting the app resets it.
+- **Publisher user identifier** — whatever you pass to
+  `Elo.setUserIdentifier`, which replaces the visitor ID on requests and
+  tracking pings. Persisted in the Keychain with the first-party user data
+  below, so it survives a relaunch; see that section for what that means for
+  sign-out. Send an id from your own systems, not an email address.
+
+### First-party user data (opt-in, off unless you call it)
+
+`Elo.setUserData` shares what your app knows about its signed-in user — age,
+gender, email, and phone — as a `user` object on ad requests. The SDK sends
+nothing here unless you call it.
+
+- **Contact details leave the device.** They travel to the ad server over
+  HTTPS and are SHA-256 hashed there before anything is written, so only
+  digests reach Elo's request logs, analytics store, and archives. Do not hash
+  them yourself — a digest the server can't reproduce matches nobody.
+- **Hashing is pseudonymization, not anonymization.** A digest is still
+  personal data under GDPR, and still counts as "Email Address" and "Phone
+  Number" on Apple's nutrition label. Hashing narrows what a leak exposes; it
+  does not remove your obligations.
+- **Store-only today.** The data is stored alongside the ad request; it is not
+  forwarded to ad exchanges and does not affect ad selection.
+- **Consent-suppressed server-side.** The ad server discards the whole object
+  on requests flagged `coppa` or `tfua`, and on any request where GDPR
+  applies. The SDK still sends it and lets the server enforce that gate — if
+  you would rather it never leave the device, don't call `setUserData` for
+  those users.
+- **Persisted on the device, encrypted at rest.** So that a relaunch which
+  resumes a signed-in session keeps sending it, the SDK stores what you set in
+  the **Keychain**, as one record with the publisher user identifier. The item
+  is `ThisDeviceOnly`, which keeps it out of iCloud Keychain and encrypted
+  device backups — an email address set on one phone never restores onto
+  another. Nothing is ever written in plaintext: if the Keychain is
+  unavailable the SDK keeps the data in memory for that process rather than
+  falling back to an unprotected file.
+- **It outlives a sign-out you don't signal.** That is the cost of persistence:
+  `Elo.setUserData(nil)` on sign-out is an obligation, not a convenience —
+  without it the previous account's details keep riding requests, including on
+  a shared device and across relaunches. `Elo.shutdown()` erases the stored
+  record as well as the in-memory copy.
 
 ### Location
 
@@ -120,6 +163,9 @@ manual declaration. At minimum, account for:
 | Coarse Location | `shareGeoLocation` on + app holds location permission (default precision) | Third-Party Advertising |
 | Precise Location | Same, if you raise `geoLocationPrecision` to 3+ | Third-Party Advertising |
 | Product Interaction | Impression tracking, plus click tracking when a mediated network delivers it | Third-Party Advertising, Analytics |
+| Email Address | Only if you pass `email` to `Elo.setUserData` — hashing on receipt does not exempt it | Third-Party Advertising |
+| Phone Number | Only if you pass `phone` to `Elo.setUserData` — hashing on receipt does not exempt it | Third-Party Advertising |
+| Other Data (age, gender) | Only if you pass them to `Elo.setUserData` | Third-Party Advertising |
 
 Whether data counts as "linked to the user" or "used for tracking" depends
 on your overall setup (ATT status, your other SDKs, your Elo account's data
