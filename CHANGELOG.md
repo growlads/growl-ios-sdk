@@ -2,6 +2,114 @@
 
 ## Unreleased
 
+## 0.4.1 — 2026-08-28
+
+- **Fix: retained ad views no longer report duplicate renders or impressions
+  after SDK reconfiguration.** Per-opportunity tracking latches now last for
+  the process lifetime, including across `Elo.configure()` and
+  `Elo.shutdown()`, so remounting an old view cannot bill the same opportunity
+  again.
+
+- **Fix: an ad covered by an overlay, or on screen while the app is not
+  frontmost, no longer counts as an impression.** Viewability was measured
+  purely geometrically, so a sheet, dialog, or any view drawn over the ad left
+  its frame untouched underneath and a fully covered ad measured as fully
+  visible. Backgrounding was invisible the same way. Neither fires a layout or
+  geometry event, so an in-flight dwell was never cancelled either.
+
+  The measurement now scales the geometric fraction by the share of it the
+  window's hit test still reaches, the dwell requires the app to be frontmost,
+  and a bounded periodic probe resets the full one-second dwell whenever a
+  cover appears. Removing the cover automatically starts a fresh dwell.
+  Leaving the foreground cancels an armed dwell and returning arms a fresh one.
+
+  What this catches is a cover with a view of its own above your screen: a
+  sheet, an alert, any presented controller. Three kinds stay undetectable, as
+  they are for any hit-test based check — a cover that declines touches itself
+  (`allowsHitTesting(false)`), a SwiftUI sibling drawn over the ad inside the
+  same view (a `ZStack` or `.overlay` scrim has no view of its own for the hit
+  test to return), and a cover in a separate `UIWindow`.
+
+- **Change: the ad disclosure moved onto the creative mark's corner, and the
+  strip's mark is now a ringed circle.** In 0.4.0 the disclosure became a
+  badge in the surface's top-trailing corner; it now rides the top-trailing
+  corner of the creative mark itself. Badging the artwork reads as marking the
+  creative rather than the container, and it keeps the disclosure clear of
+  whatever closes the row — the surface corner overlaid the call-to-action
+  pill whenever one ran to the edge. It hangs off the mark's corner rather
+  than sitting flush inside it, so it nests against the artwork instead of
+  covering it, and on the strip it is a point smaller, since that mark is a
+  fraction of the card's.
+
+  The badge itself is restyled: a near-white disc with a hairline black ring
+  and black copy at medium weight, squared up from a capsule since the default
+  copy is two characters. Longer copy relaxes it back into a capsule rather than being
+  squeezed. Those are the only fixed colors in the SDK — the badge sits on
+  creative artwork rather than on a surface the theme controls, so a fill that
+  followed light/dark would read against one creative and vanish into the
+  next. `EloAdDisclosure.color` and `EloAdStyle.badgeColor` still override it,
+  which takes the ring off and inverts the copy as before.
+
+  The strip's mark now carries a hairline grey ring, so a white or near-white
+  logo has an edge of its own instead of dissolving into the surface at that
+  size; the card's mark is large enough to stand without one.
+  The card's mark stays a rounded square and the strip's stays a circle:
+  creative artwork is a brand mark far more often than photography, and marks
+  are routinely wide wordmarks, which a circular crop takes the ends off. The
+  strip's mark is small enough to read as an avatar, where a wordmark is
+  unreadable either way. A creative with no artwork has no
+  mark to ride, and the badge keeps its 0.4.0 position in the surface's
+  top-trailing corner. The copy, the `sponsoredLabel` API, and the guarantee
+  that the disclosure is always drawn and never truncated are unchanged.
+
+- **Change: the strip's creative mark is larger, without the strip changing
+  height.** The strip's row is pinned to the call-to-action button's 44pt tap
+  target, so its mark grew into height the row already paid for (34pt → 40pt).
+  The card's mark is unchanged at 56pt: the card's row is pinned to the mark
+  itself, so a larger one would have had to come out of the card's own padding,
+  and at that size it crowded the text column rather than reading as an
+  accompanying mark. The card stays 80pt tall. Horizontal padding is untouched
+  on both, so nothing shifts laterally. `EloAdLoadingView`'s skeleton follows,
+  since a placeholder that lands at a different height than the fill shoves the
+  surrounding UI.
+
+- **Fix: an ad faded in by the host app now reports an impression.** Viewability
+  treated a transparent ad as not on screen, and nothing recomputes it when
+  opacity changes — the measurement only wakes on layout, geometry, and window
+  changes. An app that animated its ad slot from `opacity(0)` therefore latched
+  the ad at "nothing visible" for its entire showing: fully opaque and in front
+  of the user, but unable to reach the MRC bar, so no impression ever fired.
+  Renders were unaffected, which is why the slot looked healthy while
+  impressions fell away. Viewability is now purely geometric — what clips the ad
+  and the window, never `alpha` or `isHidden` — matching how the Android SDK has
+  always measured. Publishers who fade, cross-fade, or otherwise animate the
+  opacity of the ad slot should expect their iOS impressions to return to the
+  render volume they already see. Introduced in 0.3.0.
+
+- **Fix: an ad request can no longer stall on WebKit.** The SDK reads the
+  browser user agent once per install by spinning up a `WKWebView`, and that
+  read sits on the path every bid awaits. WebKit's cold start is unbounded —
+  it has to launch its own WebContent and GPU helper processes first, measured
+  at over five minutes each on a cold simulator — and the auction deadline
+  could not cancel it, because the underlying callback is not cancellable. On
+  an unlucky first launch that meant an ad request hanging far past the point
+  the auction had given up. The fetch is now bounded: if the browser user agent
+  is not available within two seconds the request proceeds without it and a
+  later request picks it up once WebKit is warm. The value is still cached
+  after the first successful read, so steady-state behaviour is unchanged.
+
+- **Fix: `EloChatSession.setMessages` no longer fires a second, unusable ad
+  request per user turn.** It preloaded with no display position while every
+  slot loads with one (`.banner` for the keyboard banner), and the display
+  position is part of the preload cache key — so the preloaded ad could never
+  be taken and the slot always went to the network anyway. Each user turn
+  therefore billed two ad opportunities for one render, halving every
+  opportunity-based ratio on your dashboards. Verified end to end against a
+  live ad server: 29 opportunities for 14 renders before, 7 for 7 after.
+  `setMessages` now only stores the transcript. To warm the cache, call
+  `Elo.preloadAd(...)` yourself with the position the slot will render into.
+
+
 ## 0.4.0 — 2026-08-19
 
 - **New: `Elo.setUserIdentity(userIdentifier:userData:)` writes both halves of

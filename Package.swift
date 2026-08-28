@@ -27,13 +27,13 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "EloAds",
-            url: "https://github.com/growlads/elo-ios-sdk/releases/download/0.4.0/EloAds.xcframework.zip",
-            checksum: "93cf188bf4b566cbbf0b37c6787538dc4fd1191a5d8bd8a2d49d29feba9836f3"
+            url: "https://github.com/growlads/elo-ios-sdk/releases/download/0.4.1/EloAds.xcframework.zip",
+            checksum: "4c32613f9bf3418f94cb16d44166926446f08fcbcfb7c7f8cb435e76a321c5a8"
         ),
         .binaryTarget(
             name: "EloAdsMediationAdMob",
-            url: "https://github.com/growlads/elo-ios-sdk/releases/download/0.4.0/EloAdsMediationAdMob.xcframework.zip",
-            checksum: "bbc0a7ebc60b83f0885a08a959d92e87227587069f0ae740527ab3c0955255dd"
+            url: "https://github.com/growlads/elo-ios-sdk/releases/download/0.4.1/EloAdsMediationAdMob.xcframework.zip",
+            checksum: "4fd87f086c0e9e37cf1b605016ee56738215641c0d7fa13090a134c68ead1ee3"
         ),
         .target(
             name: "EloAdsMediationAdMobDependencies",
