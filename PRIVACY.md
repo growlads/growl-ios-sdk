@@ -162,7 +162,7 @@ manual declaration. At minimum, account for:
 | Device ID | If you request ATT (IDFA), or via IFV fallback | Third-Party Advertising |
 | Coarse Location | `shareGeoLocation` on + app holds location permission (default precision) | Third-Party Advertising |
 | Precise Location | Same, if you raise `geoLocationPrecision` to 3+ | Third-Party Advertising |
-| Product Interaction | Impression tracking, plus click tracking when a mediated network delivers it | Third-Party Advertising, Analytics |
+| Product Interaction | Impression tracking, tap position inside Elo-served ad views (relative to the ad view, never the screen), plus click tracking when a mediated network delivers it | Third-Party Advertising, Analytics |
 | Email Address | Only if you pass `email` to `Elo.setUserData` — hashing on receipt does not exempt it | Third-Party Advertising |
 | Phone Number | Only if you pass `phone` to `Elo.setUserData` — hashing on receipt does not exempt it | Third-Party Advertising |
 | Other Data (age, gender) | Only if you pass them to `Elo.setUserData` | Third-Party Advertising |
