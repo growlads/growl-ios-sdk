@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-09-04
+
+- **New: server-selected CTA attention treatments in the keyboard strip.**
+  Elo-direct creatives can now use `ad.presentation.cta_variant` to keep the
+  existing control, add a decorative `arrow.up.right` after the label, pop the
+  button once, or sweep one shimmer across the CTA pill. The arrow widens the
+  pill it is added to; the pop is drawn and leaves the layout alone. Motion
+  starts only after one continuous second at 50% visibility and then repeats
+  every few seconds while the strip is on screen, resting at the static
+  appearance in between; it cancels off screen and is suppressed by Reduce
+  Motion. Compact cards and mediated renderer-backed ads are unchanged; missing
+  and unknown variants use the control treatment.
+
+- **Change: the keyboard strip's brand mark is a rounded square with no
+  border, not a ringed circle.** The mark keeps its 40pt size and disclosure
+  badge; its corner radius changes to 10pt and the hairline ring around it is
+  gone. Ad servers pick a favicon or an apple-touch-icon
+  for the creative image, and those are drawn for the app-icon silhouette, so
+  a circular crop was cutting the ends off the artwork. Measured across 90
+  days of served creatives, the disc removed 9.7% of the average mark and the
+  new radius removes 2.9%. Nothing in the layout moves.
+
+- **Breaking: `displayPosition` is no longer a public parameter.** The
+  `AdDisplayPosition` type and the `displayPosition` arguments on
+  `Elo.loadAd`, `Elo.preloadAd`, `EloChatSession.loadAd`, `EloAdView`, and
+  `AdBidRequest` are removed. The SDK now reports `display_position` itself
+  from the surface it renders: `card` for the chat-row card and `banner` for
+  the keyboard strip. Requests made through `Elo.loadAd`/`preloadAd` carry no
+  position, and a preloaded ad is served to whichever view later loads the
+  same transcript. `DiagnosticsEntry.displayPosition` is now the reported
+  string. Remove the argument from your calls; nothing else changes.
+
+- **New: tap analytics for Elo-served ads.** `EloAdView` now reports every
+  tap inside an Elo-served card or keyboard strip to the Elo analytics
+  endpoint (`sdk/events`, event type `ad_tap`): the region under the finger
+  (thumbnail, headline, description, CTA, chevron, or chrome), the position
+  as a fraction of the ad view's own size, the view's size, whether the tap
+  opened the destination, the time since the impression, and a per-showing
+  tap index. Taps on the inert parts of a strip with a CTA are reported as
+  not opened, which is what makes the missed-CTA rate and the tap heatmap
+  measurable. Coordinates are never screen-relative, at most fifty taps are
+  reported per showing, and mediated ads are excluded. Nothing about how taps
+  behave changed. Diagnostics gain a `tap` tracking event, so
+  `TrackingDiagnosticsEntry.Event` has a new case.
+
+
 ## 0.4.1 — 2026-08-28
 
 - **Fix: retained ad views no longer report duplicate renders or impressions
